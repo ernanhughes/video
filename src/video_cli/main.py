@@ -31,7 +31,8 @@ def show(path: Path) -> None:
 @app.command("validate")
 def validate(path: Path) -> None:
     project = load_project(path)
-    report = validate_project(project)
+    resolved_path = path.resolve()
+    report = validate_project(project, project_path=resolved_path)
 
     if not report.issues:
         typer.echo("OK")
@@ -51,13 +52,22 @@ def render(
     renderer: str = typer.Option("ffmpeg", "--renderer"),
 ) -> None:
     project = load_project(path)
-    report = validate_project(project)
+    resolved_path = path.resolve()
+    report = validate_project(project, project_path=resolved_path)
     if not report.ok:
         typer.echo("Project failed validation")
+        for issue in report.issues:
+            if issue.severity == "error":
+                typer.echo(f"ERROR {issue.code} {issue.path}: {issue.message}")
         raise typer.Exit(code=1)
 
     try:
-        result = render_project(project, output, renderer=renderer)
+        result = render_project(
+            project,
+            output,
+            renderer=renderer,
+            source_root=resolved_path.parent,
+        )
     except RenderError as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=2) from exc

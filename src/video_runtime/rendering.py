@@ -41,6 +41,10 @@ def get_renderer(name: str = "ffmpeg") -> Renderer:
         from .ffmpeg_renderer import FFmpegRenderer
 
         return FFmpegRenderer()
+    if name == "remotion":
+        from .remotion_renderer import RemotionRenderer
+
+        return RemotionRenderer()
     raise UnknownRenderer(f"unknown renderer: {name}")
 
 

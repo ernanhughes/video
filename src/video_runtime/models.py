@@ -37,6 +37,12 @@ class TransitionKind(StrEnum):
     FADE = "fade"
 
 
+class MediaFit(StrEnum):
+    CONTAIN = "contain"
+    COVER = "cover"
+    STRETCH = "stretch"
+
+
 class Animation(BaseModel):
     property: AnimationProperty
     from_value: float
@@ -71,6 +77,10 @@ class Layer(BaseModel):
     start: float = Field(default=0.0, ge=0)
     duration: float = Field(gt=0)
     source: str | None = None
+    source_start: float = Field(default=0.0, ge=0)
+    loop: bool = False
+    fit: MediaFit = MediaFit.CONTAIN
+    volume: float = Field(default=1.0, ge=0, le=4)
     text: str | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
     animations: list[Animation] = Field(default_factory=list)
@@ -81,6 +91,12 @@ class Layer(BaseModel):
             raise ValueError("text layers require text")
         if self.kind in {LayerKind.IMAGE, LayerKind.VIDEO, LayerKind.AUDIO} and not self.source:
             raise ValueError(f"{self.kind.value} layers require source")
+        if self.kind not in {LayerKind.VIDEO, LayerKind.AUDIO} and self.source_start != 0:
+            raise ValueError("source_start is only valid for video and audio layers")
+        if self.kind not in {LayerKind.IMAGE, LayerKind.VIDEO, LayerKind.AUDIO} and self.loop:
+            raise ValueError("loop is only valid for media layers")
+        if self.kind != LayerKind.AUDIO and self.volume != 1.0:
+            raise ValueError("volume is only valid for audio layers")
         return self
 
 
@@ -93,7 +109,7 @@ class Scene(BaseModel):
 
 
 class VideoProject(BaseModel):
-    schema_version: str = "0.2"
+    schema_version: str = "0.3"
     title: str = Field(min_length=1)
     canvas: Canvas = Field(default_factory=Canvas)
     scenes: list[Scene] = Field(default_factory=list)

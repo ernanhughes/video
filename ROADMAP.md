@@ -66,18 +66,19 @@ Goal: render a small useful subset end to end.
 - transition-aware scene audio fades
 - executable FFmpeg smoke test for transforms + scene fade
 
-### R1b.2 — representative project
+### R1b.2 — representative project ✅
 
 Goal: stop testing renderer capabilities in isolation and render one useful complete video.
 
-- checked-in/generated demo media assets
-- 3–4 scenes
-- text + shape + image/video + audio
-- transforms and easing
-- at least one real cross-fade
-- narration/music coexistence
-- final MP4 smoke artifact in CI or documented local build
-- capture renderer pain points for the R1c decision
+- source-controlled four-scene showcase project
+- deterministic generated still/video/audio assets; no binary media required in git
+- text + shape + image + video + audio in one composition
+- x/y, scale, rotation, opacity, and easing
+- three real visual/audio cross-fades
+- 15.7-second canonical timeline
+- documented local build workflow
+- end-to-end CI test: generate assets -> validate -> render MP4
+- representative project becomes the evidence base for R1c
 
 ### R1c — renderer decision gate
 
@@ -87,7 +88,9 @@ Use the R1 implementation experience to decide whether:
 2. Remotion becomes a second/primary adapter,
 3. or a hybrid renderer is justified.
 
-The decision gate should use the representative R1b.2 project containing text, shapes, image/video assets, audio, transforms, easing, and transitions. Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
+The decision gate should use `examples/showcase/video.json` and explicitly compare authoring complexity, preview ergonomics, animation expressiveness, deterministic rendering, media/audio handling, operational dependencies, and how much renderer-specific complexity the adapter must absorb.
+
+Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
 
 ## R2 — AI generation and bounded editing
 

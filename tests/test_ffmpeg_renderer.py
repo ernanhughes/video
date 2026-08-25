@@ -1,7 +1,19 @@
 from pathlib import Path
 
 from video_runtime.ffmpeg_renderer import FFmpegRenderer
-from video_runtime.models import Canvas, Layer, LayerKind, MediaFit, Scene, VideoProject
+from video_runtime.models import (
+    Animation,
+    AnimationProperty,
+    Canvas,
+    Easing,
+    Layer,
+    LayerKind,
+    MediaFit,
+    Scene,
+    Transition,
+    TransitionKind,
+    VideoProject,
+)
 
 
 def test_build_command_renders_text_and_shape() -> None:
@@ -21,17 +33,16 @@ def test_build_command_renders_text_and_shape() -> None:
     )
 
     command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
-    joined = " ".join(command)
     graph = command[command.index("-filter_complex") + 1]
 
-    assert "color=c=black:s=1280x720:r=30.0:d=2.0" in joined
+    assert "color=c=black:s=1280x720:r=30.0:d=2" in graph
     assert "drawbox=" in graph
     assert "drawtext=" in graph
     assert "640-text_w/2" in graph
     assert command[-1] == "demo.mp4"
 
 
-def test_scene_offsets_are_globalized() -> None:
+def test_scene_offsets_are_local_and_cut_scenes_concat() -> None:
     project = VideoProject(
         title="Two scenes",
         scenes=[
@@ -42,7 +53,29 @@ def test_scene_offsets_are_globalized() -> None:
 
     command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
     graph = command[command.index("-filter_complex") + 1]
-    assert "between(t,2.5,3.5)" in graph
+    assert "between(t,0.5,1.5)" in graph
+    assert "concat=n=2:v=1:a=0" in graph
+
+
+def test_fade_transition_uses_xfade_and_overlap_offset() -> None:
+    project = VideoProject(
+        title="Fade",
+        scenes=[
+            Scene(
+                id="one",
+                duration=4.0,
+                transition_out=Transition(kind=TransitionKind.FADE, duration=0.5),
+            ),
+            Scene(id="two", duration=3.0),
+        ],
+    )
+
+    command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
+    graph = command[command.index("-filter_complex") + 1]
+
+    assert "xfade=transition=fade:duration=0.5:offset=3.5" in graph
+    assert "-t" in command
+    assert command[command.index("-t") + 1] == "6.5"
 
 
 def test_media_inputs_generate_overlay_audio_and_trim_graph() -> None:
@@ -98,6 +131,76 @@ def test_media_inputs_generate_overlay_audio_and_trim_graph() -> None:
     assert "adelay=500|500" in graph
     assert "amix=inputs=1" in graph
     assert "[aout]" in command
+
+
+def test_media_transforms_compile_to_ffmpeg_filters() -> None:
+    project = VideoProject(
+        title="Transforms",
+        scenes=[
+            Scene(
+                id="main",
+                duration=3.0,
+                layers=[
+                    Layer(
+                        id="photo",
+                        kind=LayerKind.IMAGE,
+                        source="photo.png",
+                        duration=3.0,
+                        animations=[
+                            Animation(property=AnimationProperty.SCALE, from_value=0.8, to_value=1.0, duration=1.0, easing=Easing.EASE_OUT),
+                            Animation(property=AnimationProperty.ROTATION, from_value=-5, to_value=0, duration=1.0, easing=Easing.EASE_IN_OUT),
+                            Animation(property=AnimationProperty.OPACITY, from_value=0, to_value=1, duration=0.5, easing=Easing.EASE_IN),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
+    graph = command[command.index("-filter_complex") + 1]
+
+    assert "scale=w='iw*(" in graph
+    assert ":eval=frame" in graph
+    assert "rotate=angle='(" in graph
+    assert "*PI/180'" in graph
+    assert "colorchannelmixer=aa='" in graph
+    assert "1-(1-(" in graph
+    assert "*(3-2*(" in graph
+
+
+def test_eased_position_animation_compiles_expression() -> None:
+    project = VideoProject(
+        title="Ease",
+        scenes=[
+            Scene(
+                id="main",
+                duration=2.0,
+                layers=[
+                    Layer(
+                        id="title",
+                        kind=LayerKind.TEXT,
+                        text="Hello",
+                        duration=2.0,
+                        animations=[
+                            Animation(
+                                property=AnimationProperty.X,
+                                from_value=100,
+                                to_value=500,
+                                duration=1.0,
+                                easing=Easing.EASE_IN_OUT,
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
+    graph = command[command.index("-filter_complex") + 1]
+    assert "(t-0)/1" in graph
+    assert "(3-2*((t-0)/1))" in graph
 
 
 def test_looping_media_uses_stream_loop() -> None:

@@ -6,7 +6,7 @@ import typer
 
 from video_runtime.models import VideoProject
 from video_runtime.project_io import load_project, save_project
-from video_runtime.rendering import RendererNotConfigured, render_project
+from video_runtime.rendering import RenderError, render_project
 from video_runtime.validation import validate_project
 
 app = typer.Typer(no_args_is_help=True, help="Programmable AI-native video tooling")
@@ -45,7 +45,11 @@ def validate(path: Path) -> None:
 
 
 @app.command("render")
-def render(path: Path, output: Path = typer.Option(Path("output.mp4"), "--output", "-o")) -> None:
+def render(
+    path: Path,
+    output: Path = typer.Option(Path("output.mp4"), "--output", "-o"),
+    renderer: str = typer.Option("ffmpeg", "--renderer"),
+) -> None:
     project = load_project(path)
     report = validate_project(project)
     if not report.ok:
@@ -53,12 +57,15 @@ def render(path: Path, output: Path = typer.Option(Path("output.mp4"), "--output
         raise typer.Exit(code=1)
 
     try:
-        result = render_project(project, output)
-    except RendererNotConfigured as exc:
+        result = render_project(project, output, renderer=renderer)
+    except RenderError as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=2) from exc
 
-    typer.echo(str(result.output_path))
+    typer.echo(
+        f"Rendered {result.output_path} with {result.renderer} "
+        f"({result.duration:.2f}s)"
+    )
 
 
 if __name__ == "__main__":

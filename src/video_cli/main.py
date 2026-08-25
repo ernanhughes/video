@@ -32,7 +32,7 @@ def show(path: Path) -> None:
 def validate(path: Path) -> None:
     project = load_project(path)
     resolved_path = path.resolve()
-    report = validate_project(project, project_path=resolved_path)
+    report = validate_project(project, project_path=resolved_path, probe_assets=True)
 
     if not report.issues:
         typer.echo("OK")
@@ -53,7 +53,7 @@ def render(
 ) -> None:
     project = load_project(path)
     resolved_path = path.resolve()
-    report = validate_project(project, project_path=resolved_path)
+    report = validate_project(project, project_path=resolved_path, probe_assets=True)
     if not report.ok:
         typer.echo("Project failed validation")
         for issue in report.issues:
@@ -72,10 +72,7 @@ def render(
         typer.echo(str(exc))
         raise typer.Exit(code=2) from exc
 
-    typer.echo(
-        f"Rendered {result.output_path} with {result.renderer} "
-        f"({result.duration:.2f}s)"
-    )
+    typer.echo(f"Rendered {result.output_path} with {result.renderer} ({result.duration:.2f}s)")
 
 
 if __name__ == "__main__":

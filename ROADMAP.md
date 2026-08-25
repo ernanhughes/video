@@ -37,15 +37,32 @@ Goal: render a small useful subset end to end.
 - explicit failure for renderer features that are represented in the IR but not yet implemented
 - animated two-scene example
 
-### R1b.1 — media composition
+### R1b.1a — multimedia composition core ✅
 
 - image layers
 - video layers
 - audio layers
-- media probing and duration diagnostics
-- opacity/scale/rotation animation
+- typed `fit`, `source_start`, `loop`, and `volume` media semantics
+- `contain`, `cover`, and `stretch` sizing
+- project-relative asset resolution
+- ffprobe stream/duration inspection
+- media-kind validation
+- source-duration validation for non-looping media
+- video trim offsets
+- looping video/audio inputs
+- visual overlay composition
+- audio delay, volume, and mixing
+- filter-graph tests for multimedia projects
+
+### R1b.1b — transforms and transitions
+
+- opacity animation
+- scale animation
+- rotation animation
+- non-linear easing compilation
 - actual visual fade transition rendering
-- trim/loop/fit semantics for media assets
+- transition-aware audio fades
+- representative checked-in multimedia demo assets/project
 
 ### R1c — renderer decision gate
 

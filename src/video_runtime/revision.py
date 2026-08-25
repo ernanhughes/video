@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+import shlex
+import subprocess
 from copy import deepcopy
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -64,6 +67,66 @@ class RevisionChange(BaseModel):
 class RevisionResult(BaseModel):
     project: VideoProject
     changes: list[RevisionChange]
+
+
+class Reviser(Protocol):
+    name: str
+
+    def revise(self, project: VideoProject, scene_id: str, instruction: str) -> RevisionPatch:
+        ...
+
+
+class CommandReviser:
+    """External model adapter that may emit only a bounded RevisionPatch."""
+
+    name = "command"
+
+    def __init__(self, command: str):
+        self.command = command
+
+    def revise(self, project: VideoProject, scene_id: str, instruction: str) -> RevisionPatch:
+        scene = _find_scene(project, scene_id)
+        request = {
+            "task": "revise_video_scene",
+            "scene_id": scene_id,
+            "instruction": instruction,
+            "scene": scene.model_dump(mode="json"),
+            "project_context": {
+                "title": project.title,
+                "canvas": project.canvas.model_dump(mode="json"),
+                "duration": project.duration,
+                "scene_ids": [item.id for item in project.scenes],
+            },
+            "output_schema": RevisionPatch.model_json_schema(),
+            "constraints": {
+                "target_scene_only": True,
+                "existing_layers_only": [layer.id for layer in scene.layers],
+                "allowed_operations": [kind.value for kind in PatchOperationKind],
+                "renderer_code_forbidden": True,
+            },
+        }
+        try:
+            completed = subprocess.run(
+                shlex.split(self.command),
+                input=json.dumps(request),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise RevisionError(f"could not start reviser command: {exc}") from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or f"exit code {completed.returncode}"
+            raise RevisionError(f"reviser command failed: {detail}")
+        try:
+            patch = RevisionPatch.model_validate_json(completed.stdout)
+        except Exception as exc:
+            raise RevisionError(f"reviser returned invalid RevisionPatch JSON: {exc}") from exc
+        if patch.scene_id != scene_id:
+            raise RevisionError(
+                f"reviser attempted to target scene {patch.scene_id!r}; bounded scene is {scene_id!r}"
+            )
+        return patch
 
 
 def _find_scene(project: VideoProject, scene_id: str) -> Scene:
@@ -129,8 +192,6 @@ def apply_revision(project: VideoProject, patch: RevisionPatch) -> RevisionResul
             else:  # pragma: no cover - enum exhaustiveness guard
                 raise RevisionError(f"unsupported operation: {op.kind}")
 
-    # Revalidate the complete canonical model after mutation. This catches negative
-    # durations, invalid text-layer state, and other invariants before persistence.
     try:
         validated = VideoProject.model_validate(updated.model_dump(mode="json"))
     except Exception as exc:

@@ -17,6 +17,48 @@ class LayerKind(StrEnum):
     GENERATED = "generated"
 
 
+class Easing(StrEnum):
+    LINEAR = "linear"
+    EASE_IN = "ease_in"
+    EASE_OUT = "ease_out"
+    EASE_IN_OUT = "ease_in_out"
+
+
+class AnimationProperty(StrEnum):
+    OPACITY = "opacity"
+    X = "x"
+    Y = "y"
+    SCALE = "scale"
+    ROTATION = "rotation"
+
+
+class TransitionKind(StrEnum):
+    CUT = "cut"
+    FADE = "fade"
+
+
+class Animation(BaseModel):
+    property: AnimationProperty
+    from_value: float
+    to_value: float
+    start: float = Field(default=0.0, ge=0)
+    duration: float = Field(gt=0)
+    easing: Easing = Easing.LINEAR
+
+
+class Transition(BaseModel):
+    kind: TransitionKind = TransitionKind.CUT
+    duration: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_duration(self) -> "Transition":
+        if self.kind == TransitionKind.CUT and self.duration != 0:
+            raise ValueError("cut transitions must have zero duration")
+        if self.kind == TransitionKind.FADE and self.duration <= 0:
+            raise ValueError("fade transitions require positive duration")
+        return self
+
+
 class Canvas(BaseModel):
     width: int = Field(default=1920, gt=0)
     height: int = Field(default=1080, gt=0)
@@ -31,6 +73,7 @@ class Layer(BaseModel):
     source: str | None = None
     text: str | None = None
     properties: dict[str, Any] = Field(default_factory=dict)
+    animations: list[Animation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_content(self) -> "Layer":
@@ -45,11 +88,12 @@ class Scene(BaseModel):
     id: str = Field(min_length=1)
     duration: float = Field(gt=0)
     layers: list[Layer] = Field(default_factory=list)
+    transition_out: Transition = Field(default_factory=Transition)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class VideoProject(BaseModel):
-    schema_version: str = "0.1"
+    schema_version: str = "0.2"
     title: str = Field(min_length=1)
     canvas: Canvas = Field(default_factory=Canvas)
     scenes: list[Scene] = Field(default_factory=list)
@@ -57,4 +101,5 @@ class VideoProject(BaseModel):
 
     @property
     def duration(self) -> float:
-        return sum(scene.duration for scene in self.scenes)
+        transition_overlap = sum(scene.transition_out.duration for scene in self.scenes[:-1])
+        return sum(scene.duration for scene in self.scenes) - transition_overlap

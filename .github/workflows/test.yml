@@ -16,3 +16,23 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: pytest
+
+  remotion-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e ".[dev]"
+      - run: npm install
+        working-directory: renderers/remotion
+      - run: npm run typecheck
+        working-directory: renderers/remotion
+      - run: python examples/showcase/generate_assets.py
+      - run: video validate examples/showcase/video.json
+      - run: video render examples/showcase/video.json --renderer remotion -o build/showcase-remotion.mp4
+      - run: test -s build/showcase-remotion.mp4

@@ -4,12 +4,26 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .models import Animation, AnimationProperty, Easing, Layer, LayerKind, MediaFit, VideoProject
+from .models import (
+    Animation,
+    AnimationProperty,
+    Easing,
+    Layer,
+    LayerKind,
+    MediaFit,
+    TransitionKind,
+    VideoProject,
+)
 from .rendering import RenderError, RenderResult
 
 
 class FFmpegRenderer:
-    """Deterministic FFmpeg renderer for the canonical Video IR."""
+    """Deterministic FFmpeg compiler for the canonical Video IR.
+
+    Scenes are rendered independently and then composed with cut/fade
+    transitions. This keeps scene-transition semantics above individual layers
+    and prevents renderer-specific transition hacks from leaking into the IR.
+    """
 
     name = "ffmpeg"
     supported_kinds = {
@@ -19,7 +33,13 @@ class FFmpegRenderer:
         LayerKind.VIDEO,
         LayerKind.AUDIO,
     }
-    supported_animation_properties = {AnimationProperty.X, AnimationProperty.Y}
+    supported_animation_properties = {
+        AnimationProperty.X,
+        AnimationProperty.Y,
+        AnimationProperty.OPACITY,
+        AnimationProperty.SCALE,
+        AnimationProperty.ROTATION,
+    }
 
     def render(
         self,
@@ -48,14 +68,18 @@ class FFmpegRenderer:
             for layer in scene.layers
             for animation in layer.animations
             if animation.property not in self.supported_animation_properties
-            or animation.easing != Easing.LINEAR
+            or (
+                animation.property
+                in {AnimationProperty.OPACITY, AnimationProperty.SCALE, AnimationProperty.ROTATION}
+                and layer.kind not in {LayerKind.IMAGE, LayerKind.VIDEO}
+            )
         ]
         if unsupported_animations:
             details = ", ".join(
                 f"{layer.id}:{animation.property.value}/{animation.easing.value}"
                 for layer, animation in unsupported_animations
             )
-            raise RenderError(f"ffmpeg renderer does not yet support animation: {details}")
+            raise RenderError(f"ffmpeg renderer does not support animation for layer: {details}")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         command = self.build_command(
@@ -80,16 +104,10 @@ class FFmpegRenderer:
         executable: str = "ffmpeg",
         source_root: Path = Path("."),
     ) -> list[str]:
-        canvas = project.canvas
-        background = str(project.metadata.get("background", "black"))
-        source = (
-            f"color=c={background}:s={canvas.width}x{canvas.height}:"
-            f"r={canvas.fps}:d={project.duration}"
-        )
-        command = [executable, "-y", "-f", "lavfi", "-i", source]
+        command = [executable, "-y"]
 
         media_inputs: dict[str, int] = {}
-        next_input = 1
+        next_input = 0
         for scene in project.scenes:
             for layer in scene.layers:
                 if layer.kind not in {LayerKind.IMAGE, LayerKind.VIDEO, LayerKind.AUDIO}:
@@ -104,42 +122,72 @@ class FFmpegRenderer:
                 media_inputs[layer.id] = next_input
                 next_input += 1
 
-        filters: list[str] = ["[0:v]setpts=PTS-STARTPTS[v0]"]
-        visual_label = "v0"
-        visual_index = 0
+        filters: list[str] = []
+        scene_labels: list[str] = []
         audio_labels: list[str] = []
-        scene_offset = 0.0
+        global_scene_offset = 0.0
 
         for scene_index, scene in enumerate(project.scenes):
+            visual_label = f"scene{scene_index}_0"
+            background = str(scene.metadata.get("background", project.metadata.get("background", "black")))
+            filters.append(
+                f"color=c={background}:s={project.canvas.width}x{project.canvas.height}:"
+                f"r={project.canvas.fps}:d={scene.duration:g}[{visual_label}]"
+            )
+            visual_index = 0
+
             for layer in scene.layers:
-                start = scene_offset + layer.start
-                end = start + layer.duration
-                next_visual = f"v{visual_index + 1}"
+                local_start = layer.start
+                local_end = layer.start + layer.duration
+                next_visual = f"scene{scene_index}_{visual_index + 1}"
 
                 if layer.kind == LayerKind.TEXT:
-                    filters.append(f"[{visual_label}]{self._text_filter(layer, start, end)}[{next_visual}]")
+                    filters.append(
+                        f"[{visual_label}]{self._text_filter(layer, local_start, local_end)}[{next_visual}]"
+                    )
                     visual_label = next_visual
                     visual_index += 1
                 elif layer.kind == LayerKind.SHAPE:
-                    filters.append(f"[{visual_label}]{self._shape_filter(layer, start, end)}[{next_visual}]")
+                    filters.append(
+                        f"[{visual_label}]{self._shape_filter(layer, local_start, local_end)}[{next_visual}]"
+                    )
                     visual_label = next_visual
                     visual_index += 1
                 elif layer.kind in {LayerKind.IMAGE, LayerKind.VIDEO}:
                     input_index = media_inputs[layer.id]
-                    media_label = f"m{input_index}"
-                    filters.append(self._prepare_visual_media(layer, input_index, media_label, start, project))
-                    x_expr = self._position_expr(layer, AnimationProperty.X, layer.properties.get("x", 0), start)
-                    y_expr = self._position_expr(layer, AnimationProperty.Y, layer.properties.get("y", 0), start)
+                    media_label = f"m{scene_index}_{input_index}"
+                    filters.append(
+                        self._prepare_visual_media(
+                            layer,
+                            input_index,
+                            media_label,
+                            local_start,
+                            project,
+                        )
+                    )
+                    x_expr = self._position_expr(
+                        layer,
+                        AnimationProperty.X,
+                        layer.properties.get("x", 0),
+                        local_start,
+                    )
+                    y_expr = self._position_expr(
+                        layer,
+                        AnimationProperty.Y,
+                        layer.properties.get("y", 0),
+                        local_start,
+                    )
                     filters.append(
                         f"[{visual_label}][{media_label}]overlay=x='{x_expr}':y='{y_expr}':"
-                        f"eof_action=pass:enable='between(t,{start:g},{end:g})'[{next_visual}]"
+                        f"eof_action=pass:enable='between(t,{local_start:g},{local_end:g})'[{next_visual}]"
                     )
                     visual_label = next_visual
                     visual_index += 1
                 elif layer.kind == LayerKind.AUDIO:
                     input_index = media_inputs[layer.id]
-                    audio_label = f"a{input_index}"
-                    delay_ms = max(0, round(start * 1000))
+                    audio_label = f"a{scene_index}_{input_index}"
+                    global_start = global_scene_offset + layer.start
+                    delay_ms = max(0, round(global_start * 1000))
                     filters.append(
                         f"[{input_index}:a]atrim=start={layer.source_start:g}:"
                         f"duration={layer.duration:g},asetpts=PTS-STARTPTS,"
@@ -147,9 +195,17 @@ class FFmpegRenderer:
                     )
                     audio_labels.append(audio_label)
 
-            scene_offset += scene.duration
+            scene_output = f"scene{scene_index}"
+            filters.append(
+                f"[{visual_label}]trim=duration={scene.duration:g},setpts=PTS-STARTPTS[{scene_output}]"
+            )
+            scene_labels.append(scene_output)
+
+            global_scene_offset += scene.duration
             if scene_index < len(project.scenes) - 1:
-                scene_offset -= scene.transition_out.duration
+                global_scene_offset -= scene.transition_out.duration
+
+        visual_output = self._compose_scenes(project, scene_labels, filters)
 
         final_audio: str | None = None
         if audio_labels:
@@ -159,7 +215,7 @@ class FFmpegRenderer:
             )
             final_audio = "aout"
 
-        command.extend(["-filter_complex", ";".join(filters), "-map", f"[{visual_label}]"])
+        command.extend(["-filter_complex", ";".join(filters), "-map", f"[{visual_output}]"])
         if final_audio:
             command.extend(["-map", f"[{final_audio}]", "-c:a", "aac", "-b:a", "192k"])
         command.extend(
@@ -177,12 +233,46 @@ class FFmpegRenderer:
         )
         return command
 
+    def _compose_scenes(
+        self,
+        project: VideoProject,
+        scene_labels: list[str],
+        filters: list[str],
+    ) -> str:
+        if not scene_labels:
+            raise RenderError("cannot render a project with no scenes")
+        if len(scene_labels) == 1:
+            return scene_labels[0]
+
+        current = scene_labels[0]
+        current_duration = project.scenes[0].duration
+        for index in range(1, len(scene_labels)):
+            previous_scene = project.scenes[index - 1]
+            next_label = scene_labels[index]
+            output = f"timeline{index}"
+            transition = previous_scene.transition_out
+
+            if transition.kind == TransitionKind.FADE:
+                offset = current_duration - transition.duration
+                filters.append(
+                    f"[{current}][{next_label}]xfade=transition=fade:"
+                    f"duration={transition.duration:g}:offset={offset:g}[{output}]"
+                )
+                current_duration += project.scenes[index].duration - transition.duration
+            else:
+                filters.append(
+                    f"[{current}][{next_label}]concat=n=2:v=1:a=0[{output}]"
+                )
+                current_duration += project.scenes[index].duration
+            current = output
+        return current
+
     def _prepare_visual_media(
         self,
         layer: Layer,
         input_index: int,
         output_label: str,
-        global_start: float,
+        local_start: float,
         project: VideoProject,
     ) -> str:
         width = int(layer.properties.get("width", project.canvas.width))
@@ -200,10 +290,25 @@ class FFmpegRenderer:
         trim = f"trim=duration={layer.duration:g}"
         if layer.kind == LayerKind.VIDEO and layer.source_start:
             trim = f"trim=start={layer.source_start:g}:duration={layer.duration:g}"
-        return (
-            f"[{input_index}:v]{trim},setpts=PTS-STARTPTS+{global_start:g}/TB,"
-            f"{sizing},format=rgba[{output_label}]"
-        )
+
+        operations = [trim, "setpts=PTS-STARTPTS", sizing, "format=rgba"]
+        scale_animation = self._animation(layer, AnimationProperty.SCALE)
+        if scale_animation:
+            expr = self._value_expression(scale_animation, 0.0, time_symbol="t")
+            operations.append(f"scale=w='iw*({expr})':h='ih*({expr})':eval=frame")
+
+        rotation_animation = self._animation(layer, AnimationProperty.ROTATION)
+        if rotation_animation:
+            expr = self._value_expression(rotation_animation, 0.0, time_symbol="t")
+            operations.append(f"rotate=angle='({expr})*PI/180':fillcolor=none")
+
+        opacity_animation = self._animation(layer, AnimationProperty.OPACITY)
+        if opacity_animation:
+            expr = self._value_expression(opacity_animation, 0.0, time_symbol="t")
+            operations.append(f"colorchannelmixer=aa='{expr}'")
+
+        operations.append(f"setpts=PTS+{local_start:g}/TB")
+        return f"[{input_index}:v]{','.join(operations)}[{output_label}]"
 
     def _text_filter(self, layer: Layer, start: float, end: float) -> str:
         props = layer.properties
@@ -253,28 +358,46 @@ class FFmpegRenderer:
         layer: Layer,
         property_name: AnimationProperty,
         default: object,
-        global_layer_start: float,
+        layer_start: float,
     ) -> str:
-        animation = next((item for item in layer.animations if item.property == property_name), None)
+        animation = self._animation(layer, property_name)
         if animation is None:
             if default == "center":
                 return "center"
             return f"{float(default):g}"
-        return self._linear_expression(animation, global_layer_start)
+        return self._value_expression(animation, layer_start, time_symbol="t")
+
+    def _value_expression(
+        self,
+        animation: Animation,
+        layer_start: float,
+        *,
+        time_symbol: str,
+    ) -> str:
+        animation_start = layer_start + animation.start
+        animation_end = animation_start + animation.duration
+        progress = f"({time_symbol}-{animation_start:g})/{animation.duration:g}"
+        eased = self._easing_expression(animation.easing, progress)
+        delta = animation.to_value - animation.from_value
+        moving = f"{animation.from_value:g}+({delta:g})*({eased})"
+        return (
+            f"if(lt({time_symbol},{animation_start:g}),{animation.from_value:g},"
+            f"if(gt({time_symbol},{animation_end:g}),{animation.to_value:g},{moving}))"
+        )
 
     @staticmethod
-    def _linear_expression(animation: Animation, global_layer_start: float) -> str:
-        animation_start = global_layer_start + animation.start
-        animation_end = animation_start + animation.duration
-        delta = animation.to_value - animation.from_value
-        moving = (
-            f"{animation.from_value:g}+({delta:g})*"
-            f"(t-{animation_start:g})/{animation.duration:g}"
-        )
-        return (
-            f"if(lt(t,{animation_start:g}),{animation.from_value:g},"
-            f"if(gt(t,{animation_end:g}),{animation.to_value:g},{moving}))"
-        )
+    def _easing_expression(easing: Easing, progress: str) -> str:
+        if easing == Easing.LINEAR:
+            return progress
+        if easing == Easing.EASE_IN:
+            return f"({progress})*({progress})"
+        if easing == Easing.EASE_OUT:
+            return f"1-(1-({progress}))*(1-({progress}))"
+        return f"({progress})*({progress})*(3-2*({progress}))"
+
+    @staticmethod
+    def _animation(layer: Layer, property_name: AnimationProperty) -> Animation | None:
+        return next((item for item in layer.animations if item.property == property_name), None)
 
     @staticmethod
     def _resolve_source(layer: Layer, source_root: Path) -> Path:

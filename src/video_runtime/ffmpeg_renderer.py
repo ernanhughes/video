@@ -189,9 +189,14 @@ class FFmpegRenderer:
                     global_start = global_scene_offset + layer.start
                     delay_ms = max(0, round(global_start * 1000))
                     filters.append(
-                        f"[{input_index}:a]atrim=start={layer.source_start:g}:"
-                        f"duration={layer.duration:g},asetpts=PTS-STARTPTS,"
-                        f"volume={layer.volume:g},adelay={delay_ms}|{delay_ms}[{audio_label}]"
+                        self._audio_filter(
+                            project,
+                            scene_index,
+                            layer,
+                            input_index,
+                            audio_label,
+                            delay_ms,
+                        )
                     )
                     audio_labels.append(audio_label)
 
@@ -266,6 +271,44 @@ class FFmpegRenderer:
                 current_duration += project.scenes[index].duration
             current = output
         return current
+
+    def _audio_filter(
+        self,
+        project: VideoProject,
+        scene_index: int,
+        layer: Layer,
+        input_index: int,
+        output_label: str,
+        delay_ms: int,
+    ) -> str:
+        operations = [
+            f"atrim=start={layer.source_start:g}:duration={layer.duration:g}",
+            "asetpts=PTS-STARTPTS",
+            f"volume={layer.volume:g}",
+        ]
+        scene = project.scenes[scene_index]
+
+        if scene_index > 0:
+            incoming = project.scenes[scene_index - 1].transition_out
+            if incoming.kind == TransitionKind.FADE and layer.start < incoming.duration:
+                fade_duration = min(layer.duration, incoming.duration - layer.start)
+                if fade_duration > 0:
+                    operations.append(f"afade=t=in:st=0:d={fade_duration:g}")
+
+        outgoing = scene.transition_out
+        if outgoing.kind == TransitionKind.FADE:
+            transition_start = scene.duration - outgoing.duration
+            layer_end = layer.start + layer.duration
+            if layer_end > transition_start:
+                fade_start = max(0.0, transition_start - layer.start)
+                fade_duration = min(outgoing.duration, layer.duration - fade_start)
+                if fade_duration > 0:
+                    operations.append(
+                        f"afade=t=out:st={fade_start:g}:d={fade_duration:g}"
+                    )
+
+        operations.append(f"adelay={delay_ms}|{delay_ms}")
+        return f"[{input_index}:a]{','.join(operations)}[{output_label}]"
 
     def _prepare_visual_media(
         self,

@@ -54,15 +54,30 @@ Goal: render a small useful subset end to end.
 - audio delay, volume, and mixing
 - filter-graph tests for multimedia projects
 
-### R1b.1b — transforms and transitions
+### R1b.1b — transforms and transitions ✅
 
-- opacity animation
-- scale animation
-- rotation animation
-- non-linear easing compilation
-- actual visual fade transition rendering
-- transition-aware audio fades
-- representative checked-in multimedia demo assets/project
+- scene-local visual composition
+- opacity animation for image/video layers
+- scale animation for image/video layers
+- rotation animation for image/video layers
+- non-linear easing compilation (`ease_in`, `ease_out`, `ease_in_out`)
+- eased x/y motion for visual layers
+- real scene `xfade` rendering
+- transition-aware scene audio fades
+- executable FFmpeg smoke test for transforms + scene fade
+
+### R1b.2 — representative project
+
+Goal: stop testing renderer capabilities in isolation and render one useful complete video.
+
+- checked-in/generated demo media assets
+- 3–4 scenes
+- text + shape + image/video + audio
+- transforms and easing
+- at least one real cross-fade
+- narration/music coexistence
+- final MP4 smoke artifact in CI or documented local build
+- capture renderer pain points for the R1c decision
 
 ### R1c — renderer decision gate
 
@@ -72,7 +87,7 @@ Use the R1 implementation experience to decide whether:
 2. Remotion becomes a second/primary adapter,
 3. or a hybrid renderer is justified.
 
-The decision gate should use one representative project containing text, shapes, image/video assets, audio, transforms, easing, and transitions. Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
+The decision gate should use the representative R1b.2 project containing text, shapes, image/video assets, audio, transforms, easing, and transitions. Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
 
 ## R2 — AI generation and bounded editing
 

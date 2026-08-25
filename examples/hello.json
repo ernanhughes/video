@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.1",
+  "title": "Hello Video",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30.0
+  },
+  "scenes": [
+    {
+      "id": "scene-01",
+      "duration": 4.0,
+      "layers": [
+        {
+          "id": "title",
+          "kind": "text",
+          "start": 0.0,
+          "duration": 4.0,
+          "text": "The video is source code.",
+          "properties": {
+            "x": 960,
+            "y": 540,
+            "align": "center"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

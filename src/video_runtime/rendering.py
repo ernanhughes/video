@@ -17,7 +17,13 @@ class RenderResult(BaseModel):
 class Renderer(Protocol):
     name: str
 
-    def render(self, project: VideoProject, output_path: Path) -> RenderResult:
+    def render(
+        self,
+        project: VideoProject,
+        output_path: Path,
+        *,
+        source_root: Path = Path("."),
+    ) -> RenderResult:
         """Render a validated project to a media artifact."""
         ...
 
@@ -43,5 +49,6 @@ def render_project(
     output_path: Path,
     *,
     renderer: str = "ffmpeg",
+    source_root: Path = Path("."),
 ) -> RenderResult:
-    return get_renderer(renderer).render(project, output_path)
+    return get_renderer(renderer).render(project, output_path, source_root=source_root)

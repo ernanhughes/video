@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "title": "Hello Video",
   "canvas": {
     "width": 1280,
@@ -23,7 +23,17 @@
             "height": 8,
             "color": "white",
             "opacity": 0.85
-          }
+          },
+          "animations": [
+            {
+              "property": "x",
+              "from_value": -920,
+              "to_value": 180,
+              "start": 0.2,
+              "duration": 0.9,
+              "easing": "linear"
+            }
+          ]
         },
         {
           "id": "title",
@@ -37,9 +47,58 @@
             "align": "center",
             "font_size": 58,
             "color": "white"
-          }
+          },
+          "animations": [
+            {
+              "property": "y",
+              "from_value": 760,
+              "to_value": 315,
+              "start": 0.0,
+              "duration": 0.8,
+              "easing": "linear"
+            }
+          ]
         }
       ],
+      "transition_out": {
+        "kind": "fade",
+        "duration": 0.5
+      },
+      "metadata": {}
+    },
+    {
+      "id": "scene-02",
+      "duration": 3.0,
+      "layers": [
+        {
+          "id": "subtitle",
+          "kind": "text",
+          "start": 0.0,
+          "duration": 3.0,
+          "text": "Structured. Editable. Renderable.",
+          "properties": {
+            "x": 640,
+            "y": 330,
+            "align": "center",
+            "font_size": 48,
+            "color": "white"
+          },
+          "animations": [
+            {
+              "property": "x",
+              "from_value": 1500,
+              "to_value": 640,
+              "start": 0.0,
+              "duration": 0.8,
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "transition_out": {
+        "kind": "cut",
+        "duration": 0.0
+      },
       "metadata": {}
     }
   ],

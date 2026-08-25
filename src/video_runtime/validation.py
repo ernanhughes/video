@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
-from .models import VideoProject
+from .models import LayerKind, VideoProject
 
 
 class ValidationIssue(BaseModel):
@@ -20,7 +22,7 @@ class ValidationReport(BaseModel):
         return not any(issue.severity == "error" for issue in self.issues)
 
 
-def validate_project(project: VideoProject) -> ValidationReport:
+def validate_project(project: VideoProject, *, project_path: Path | None = None) -> ValidationReport:
     issues: list[ValidationIssue] = []
 
     scene_ids: set[str] = set()
@@ -38,6 +40,23 @@ def validate_project(project: VideoProject) -> ValidationReport:
                 )
             )
         scene_ids.add(scene.id)
+
+        if scene_index == len(project.scenes) - 1 and scene.transition_out.duration:
+            issues.append(
+                ValidationIssue(
+                    code="terminal_transition",
+                    message="the final scene cannot transition to another scene",
+                    path=f"{scene_path}.transition_out",
+                )
+            )
+        if scene.transition_out.duration >= scene.duration:
+            issues.append(
+                ValidationIssue(
+                    code="transition_too_long",
+                    message="transition duration must be shorter than its scene",
+                    path=f"{scene_path}.transition_out.duration",
+                )
+            )
 
         for layer_index, layer in enumerate(scene.layers):
             layer_path = f"{scene_path}.layers[{layer_index}]"
@@ -63,6 +82,31 @@ def validate_project(project: VideoProject) -> ValidationReport:
                         path=layer_path,
                     )
                 )
+
+            for animation_index, animation in enumerate(layer.animations):
+                if animation.start + animation.duration > layer.duration:
+                    issues.append(
+                        ValidationIssue(
+                            code="animation_outside_layer",
+                            message=(
+                                f"animation ends at {animation.start + animation.duration:.3f}s "
+                                f"but layer {layer.id} lasts {layer.duration:.3f}s"
+                            ),
+                            path=f"{layer_path}.animations[{animation_index}]",
+                        )
+                    )
+
+            if project_path and layer.kind in {LayerKind.IMAGE, LayerKind.VIDEO, LayerKind.AUDIO}:
+                source = Path(layer.source or "")
+                resolved = source if source.is_absolute() else project_path.parent / source
+                if not resolved.exists():
+                    issues.append(
+                        ValidationIssue(
+                            code="missing_asset",
+                            message=f"asset does not exist: {layer.source}",
+                            path=f"{layer_path}.source",
+                        )
+                    )
 
     if not project.scenes:
         issues.append(

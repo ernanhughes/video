@@ -22,11 +22,26 @@ class Renderer(Protocol):
         ...
 
 
-class RendererNotConfigured(RuntimeError):
+class RenderError(RuntimeError):
     pass
 
 
-def render_project(project: VideoProject, output_path: Path) -> RenderResult:
-    raise RendererNotConfigured(
-        "No renderer is configured yet. R1 will select and implement the first renderer adapter."
-    )
+class UnknownRenderer(RenderError):
+    pass
+
+
+def get_renderer(name: str = "ffmpeg") -> Renderer:
+    if name == "ffmpeg":
+        from .ffmpeg_renderer import FFmpegRenderer
+
+        return FFmpegRenderer()
+    raise UnknownRenderer(f"unknown renderer: {name}")
+
+
+def render_project(
+    project: VideoProject,
+    output_path: Path,
+    *,
+    renderer: str = "ffmpeg",
+) -> RenderResult:
+    return get_renderer(renderer).render(project, output_path)

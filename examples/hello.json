@@ -2,8 +2,8 @@
   "schema_version": "0.1",
   "title": "Hello Video",
   "canvas": {
-    "width": 1920,
-    "height": 1080,
+    "width": 1280,
+    "height": 720,
     "fps": 30.0
   },
   "scenes": [
@@ -12,20 +12,38 @@
       "duration": 4.0,
       "layers": [
         {
+          "id": "accent",
+          "kind": "shape",
+          "start": 0.0,
+          "duration": 4.0,
+          "properties": {
+            "x": 180,
+            "y": 465,
+            "width": 920,
+            "height": 8,
+            "color": "white",
+            "opacity": 0.85
+          }
+        },
+        {
           "id": "title",
           "kind": "text",
           "start": 0.0,
           "duration": 4.0,
           "text": "The video is source code.",
           "properties": {
-            "x": 960,
-            "y": 540,
-            "align": "center"
+            "x": 640,
+            "y": 315,
+            "align": "center",
+            "font_size": 58,
+            "color": "white"
           }
         }
       ],
       "metadata": {}
     }
   ],
-  "metadata": {}
+  "metadata": {
+    "background": "#101014"
+  }
 }

@@ -78,6 +78,32 @@ def test_fade_transition_uses_xfade_and_overlap_offset() -> None:
     assert command[command.index("-t") + 1] == "6.5"
 
 
+def test_transition_fades_scene_audio_out_and_in() -> None:
+    project = VideoProject(
+        title="Audio fade",
+        scenes=[
+            Scene(
+                id="one",
+                duration=4.0,
+                transition_out=Transition(kind=TransitionKind.FADE, duration=0.5),
+                layers=[Layer(id="outgoing", kind=LayerKind.AUDIO, source="out.wav", duration=4.0)],
+            ),
+            Scene(
+                id="two",
+                duration=3.0,
+                layers=[Layer(id="incoming", kind=LayerKind.AUDIO, source="in.wav", duration=3.0)],
+            ),
+        ],
+    )
+
+    command = FFmpegRenderer().build_command(project, Path("demo.mp4"))
+    graph = command[command.index("-filter_complex") + 1]
+
+    assert "afade=t=out:st=3.5:d=0.5" in graph
+    assert "afade=t=in:st=0:d=0.5" in graph
+    assert "adelay=3500|3500" in graph
+
+
 def test_media_inputs_generate_overlay_audio_and_trim_graph() -> None:
     project = VideoProject(
         title="Media",

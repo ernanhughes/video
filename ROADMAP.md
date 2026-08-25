@@ -10,7 +10,7 @@ Goal: make a video project a durable, validatable source artifact.
 - deterministic validation
 - example projects and tests
 
-## R1 — First renderer
+## R1 — First renderer ✅
 
 Goal: render a small useful subset end to end.
 
@@ -34,73 +34,83 @@ Goal: render a small useful subset end to end.
 - linear x/y animation compilation for text and shapes
 - animation timing validation
 - project-relative media asset validation
-- explicit failure for renderer features that are represented in the IR but not yet implemented
+- explicit failure for renderer features represented in the IR but not yet implemented
 - animated two-scene example
 
 ### R1b.1a — multimedia composition core ✅
 
-- image layers
-- video layers
-- audio layers
-- typed `fit`, `source_start`, `loop`, and `volume` media semantics
-- `contain`, `cover`, and `stretch` sizing
-- project-relative asset resolution
-- ffprobe stream/duration inspection
-- media-kind validation
-- source-duration validation for non-looping media
-- video trim offsets
-- looping video/audio inputs
-- visual overlay composition
-- audio delay, volume, and mixing
-- filter-graph tests for multimedia projects
+- image/video/audio layers
+- typed fit/source_start/loop/volume semantics
+- ffprobe inspection and media validation
+- trim/loop/overlay/audio mixing
 
 ### R1b.1b — transforms and transitions ✅
 
-- scene-local visual composition
-- opacity animation for image/video layers
-- scale animation for image/video layers
-- rotation animation for image/video layers
-- non-linear easing compilation (`ease_in`, `ease_out`, `ease_in_out`)
-- eased x/y motion for visual layers
-- real scene `xfade` rendering
-- transition-aware scene audio fades
-- executable FFmpeg smoke test for transforms + scene fade
+- opacity/scale/rotation animation
+- nonlinear easing
+- real visual fades
+- transition-aware audio fades
+- executable FFmpeg smoke tests
 
 ### R1b.2 — representative project ✅
 
-Goal: stop testing renderer capabilities in isolation and render one useful complete video.
+- four-scene showcase
+- deterministic generated media
+- text + shape + image + video + audio
+- transforms/easing/cross-fades
+- end-to-end CI render
 
-- source-controlled four-scene showcase project
-- deterministic generated still/video/audio assets; no binary media required in git
-- text + shape + image + video + audio in one composition
-- x/y, scale, rotation, opacity, and easing
-- three real visual/audio cross-fades
-- 15.7-second canonical timeline
-- documented local build workflow
-- end-to-end CI test: generate assets -> validate -> render MP4
-- representative project becomes the evidence base for R1c
+### R1c — renderer decision gate ✅
 
-### R1c — renderer decision gate
+Decision: **hybrid**.
 
-Use the R1 implementation experience to decide whether:
-
-1. FFmpeg remains the primary renderer,
-2. Remotion becomes a second/primary adapter,
-3. or a hybrid renderer is justified.
-
-The decision gate should use `examples/showcase/video.json` and explicitly compare authoring complexity, preview ergonomics, animation expressiveness, deterministic rendering, media/audio handling, operational dependencies, and how much renderer-specific complexity the adapter must absorb.
-
-Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
+- Remotion is the preferred visual composition/preview path
+- FFmpeg remains the media probing/manipulation/finalization path
+- both consume the same renderer-neutral `VideoProject`
+- the full Remotion showcase render passes CI
+- decision rationale lives in `R1C_RENDERER_DECISION.md`
 
 ## R2 — AI generation and bounded editing
 
 Goal: generate and revise the IR rather than arbitrary renderer code.
 
-- prompt -> project plan -> Video IR
-- constrained generation vocabulary
-- scene-local revision
-- structural diff before acceptance
-- generated-image/video asset adapters
+### R2a — planning and bounded revision contracts ✅
+
+- typed `VideoPlan`
+- deterministic template planner for bootstrap/tests
+- external command planner adapter for AI/local-model integration
+- `VideoPlan -> VideoProject` materialization
+- `video create INTENT`
+- typed `RevisionPatch`
+- scene-bounded allowed operation vocabulary
+- external command reviser adapter
+- structural diff before persistence
+- `video revise ... --scene ...` defaults to preview-only
+- full-project revalidation after every patch
+- tests proving revisions cannot reach layers outside the bounded scene
+
+### R2b — native model adapters
+
+- provider-neutral model request/response contract
+- first local-model adapter
+- first hosted-model adapter
+- structured-output retry/repair
+- prompt/version fingerprints
+- planner/reviser tracing
+
+### R2c — generated asset orchestration
+
+- generated image/video/audio asset requests as typed plan state
+- deterministic asset IDs and provenance
+- provider adapters remain tools, not architecture
+- materialize assets before validation/render
+
+### R2d — editor loop
+
+- preview candidate revision
+- accept/reject/revert
+- persist revision history
+- capture accepted/rejected changes as future preference data
 
 ## R3 — Evaluation and candidates
 

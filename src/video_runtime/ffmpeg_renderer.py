@@ -4,22 +4,30 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .models import Layer, LayerKind, VideoProject
+from .models import Animation, AnimationProperty, Easing, Layer, LayerKind, VideoProject
 from .rendering import RenderError, RenderResult
 
 
 class FFmpegRenderer:
-    """Deterministic R1 renderer for the first useful Video IR subset.
+    """Deterministic renderer for the first useful Video IR subset.
 
-    R1a intentionally supports only text and shape layers. Image, video,
-    audio, chart, simulation, and generated layers stay in the IR but are
-    rejected here until their renderer semantics are designed deliberately.
+    R1b adds first-class animation compilation while deliberately keeping the
+    supported surface small. Text and shape layers support linear x/y motion.
+    Media layers remain explicit IR concepts and are validated before fuller
+    media composition lands in the next renderer increment.
     """
 
     name = "ffmpeg"
     supported_kinds = {LayerKind.TEXT, LayerKind.SHAPE}
+    supported_animation_properties = {AnimationProperty.X, AnimationProperty.Y}
 
-    def render(self, project: VideoProject, output_path: Path) -> RenderResult:
+    def render(
+        self,
+        project: VideoProject,
+        output_path: Path,
+        *,
+        source_root: Path = Path("."),
+    ) -> RenderResult:
         executable = shutil.which("ffmpeg")
         if executable is None:
             raise RenderError("ffmpeg was not found on PATH")
@@ -32,7 +40,22 @@ class FFmpegRenderer:
         ]
         if unsupported:
             details = ", ".join(f"{layer.id}:{layer.kind.value}" for layer in unsupported)
-            raise RenderError(f"ffmpeg R1 renderer does not yet support: {details}")
+            raise RenderError(f"ffmpeg R1b renderer does not yet support media layer: {details}")
+
+        unsupported_animations = [
+            (layer, animation)
+            for scene in project.scenes
+            for layer in scene.layers
+            for animation in layer.animations
+            if animation.property not in self.supported_animation_properties
+            or animation.easing != Easing.LINEAR
+        ]
+        if unsupported_animations:
+            details = ", ".join(
+                f"{layer.id}:{animation.property.value}/{animation.easing.value}"
+                for layer, animation in unsupported_animations
+            )
+            raise RenderError(f"ffmpeg R1b renderer does not yet support animation: {details}")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         command = self.build_command(project, output_path, executable=executable)
@@ -64,7 +87,7 @@ class FFmpegRenderer:
 
         filters: list[str] = []
         scene_offset = 0.0
-        for scene in project.scenes:
+        for scene_index, scene in enumerate(project.scenes):
             for layer in scene.layers:
                 start = scene_offset + layer.start
                 end = start + layer.duration
@@ -73,6 +96,8 @@ class FFmpegRenderer:
                 elif layer.kind == LayerKind.SHAPE:
                     filters.append(self._shape_filter(layer, start, end))
             scene_offset += scene.duration
+            if scene_index < len(project.scenes) - 1:
+                scene_offset -= scene.transition_out.duration
 
         command = [
             executable,
@@ -102,23 +127,25 @@ class FFmpegRenderer:
         text = self._escape_filter_text(layer.text or "")
         fontsize = int(props.get("font_size", 64))
         color = str(props.get("color", "white"))
-        x = props.get("x", "center")
-        y = props.get("y", "center")
         align = str(props.get("align", "left"))
 
-        if x == "center":
-            x_expr = "(w-text_w)/2"
-        elif align == "center":
-            x_expr = f"{float(x):g}-text_w/2"
-        elif align == "right":
-            x_expr = f"{float(x):g}-text_w"
-        else:
-            x_expr = f"{float(x):g}"
+        x_expr = self._position_expr(layer, AnimationProperty.X, props.get("x", "center"), start)
+        y_expr = self._position_expr(layer, AnimationProperty.Y, props.get("y", "center"), start)
 
-        if y == "center":
+        if not self._has_animation(layer, AnimationProperty.X):
+            if x_expr == "center":
+                x_expr = "(w-text_w)/2"
+            elif align == "center":
+                x_expr = f"{float(x_expr):g}-text_w/2"
+            elif align == "right":
+                x_expr = f"{float(x_expr):g}-text_w"
+        elif align == "center":
+            x_expr = f"({x_expr})-text_w/2"
+        elif align == "right":
+            x_expr = f"({x_expr})-text_w"
+
+        if not self._has_animation(layer, AnimationProperty.Y) and y_expr == "center":
             y_expr = "(h-text_h)/2"
-        else:
-            y_expr = f"{float(y):g}"
 
         return (
             "drawtext="
@@ -130,18 +157,53 @@ class FFmpegRenderer:
 
     def _shape_filter(self, layer: Layer, start: float, end: float) -> str:
         props = layer.properties
-        x = float(props.get("x", 0))
-        y = float(props.get("y", 0))
+        x_expr = self._position_expr(layer, AnimationProperty.X, props.get("x", 0), start)
+        y_expr = self._position_expr(layer, AnimationProperty.Y, props.get("y", 0), start)
         width = float(props.get("width", 100))
         height = float(props.get("height", 100))
         color = str(props.get("color", "white"))
         opacity = float(props.get("opacity", 1.0))
         return (
             "drawbox="
-            f"x={x:g}:y={y:g}:w={width:g}:h={height:g}:"
+            f"x='{x_expr}':y='{y_expr}':w={width:g}:h={height:g}:"
             f"color={color}@{opacity:g}:t=fill:"
             f"enable='between(t,{start:g},{end:g})'"
         )
+
+    def _position_expr(
+        self,
+        layer: Layer,
+        property_name: AnimationProperty,
+        default: object,
+        global_layer_start: float,
+    ) -> str:
+        animation = next(
+            (item for item in layer.animations if item.property == property_name),
+            None,
+        )
+        if animation is None:
+            if default == "center":
+                return "center"
+            return f"{float(default):g}"
+        return self._linear_expression(animation, global_layer_start)
+
+    @staticmethod
+    def _linear_expression(animation: Animation, global_layer_start: float) -> str:
+        animation_start = global_layer_start + animation.start
+        animation_end = animation_start + animation.duration
+        delta = animation.to_value - animation.from_value
+        moving = (
+            f"{animation.from_value:g}+({delta:g})*"
+            f"(t-{animation_start:g})/{animation.duration:g}"
+        )
+        return (
+            f"if(lt(t,{animation_start:g}),{animation.from_value:g},"
+            f"if(gt(t,{animation_end:g}),{animation.to_value:g},{moving}))"
+        )
+
+    @staticmethod
+    def _has_animation(layer: Layer, property_name: AnimationProperty) -> bool:
+        return any(animation.property == property_name for animation in layer.animations)
 
     @staticmethod
     def _escape_filter_text(value: str) -> str:

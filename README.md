@@ -20,17 +20,25 @@ Instead of collapsing a project into pixels, `video` keeps scenes, layers, timin
 6. **Preferences over magic scores** — candidate comparison is the primary learning signal.
 7. **Edits become data** — accepted revisions can later become preference/training examples.
 
-## First milestone
+## Current milestone — R1a
+
+The first real renderer is now implemented with FFmpeg. It intentionally supports a narrow subset of the IR:
+
+- text layers
+- shape layers
+- multi-scene timing
+- project background color
+- H.264 MP4 output
+- explicit renderer failures and FFmpeg diagnostics
+
+FFmpeg must be installed and available on `PATH`.
 
 ```bash
-video new project.json --title "Gradient Descent"
-video validate project.json
-video render project.json
+video validate examples/hello.json
+video render examples/hello.json -o build/hello.mp4
 ```
 
-The initial repository defines the canonical Video IR, validator, renderer contract, CLI, example project, and tests. The first renderer remains deliberately undecided.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md).
+The renderer boundary remains independent from FFmpeg: `VideoProject` does not contain FFmpeg-specific concepts and future renderers can be added behind the same contract.
 
 ## Development
 
@@ -44,6 +52,8 @@ pip install -e ".[dev]"
 pytest
 video --help
 ```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md).
 
 ## North star
 

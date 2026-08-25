@@ -25,14 +25,27 @@ Goal: render a small useful subset end to end.
 - render diagnostics
 - command-generation tests
 
-### R1b — media and motion
+### R1b — motion and portable project semantics ✅
+
+- first-class `Animation` in the canonical IR
+- typed animation properties and easing vocabulary
+- first-class scene transitions
+- transition overlap in project duration/timeline calculations
+- linear x/y animation compilation for text and shapes
+- animation timing validation
+- project-relative media asset validation
+- explicit failure for renderer features that are represented in the IR but not yet implemented
+- animated two-scene example
+
+### R1b.1 — media composition
 
 - image layers
 - video layers
 - audio layers
-- opacity and transform animation
-- asset probing and deterministic media validation
-- explicit scene transition model
+- media probing and duration diagnostics
+- opacity/scale/rotation animation
+- actual visual fade transition rendering
+- trim/loop/fit semantics for media assets
 
 ### R1c — renderer decision gate
 
@@ -42,7 +55,7 @@ Use the R1 implementation experience to decide whether:
 2. Remotion becomes a second/primary adapter,
 3. or a hybrid renderer is justified.
 
-Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
+The decision gate should use one representative project containing text, shapes, image/video assets, audio, transforms, easing, and transitions. Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
 
 ## R2 — AI generation and bounded editing
 

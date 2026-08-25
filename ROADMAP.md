@@ -1,6 +1,6 @@
 # Roadmap
 
-## R0 — Source model
+## R0 — Source model ✅
 
 Goal: make a video project a durable, validatable source artifact.
 
@@ -14,12 +14,35 @@ Goal: make a video project a durable, validatable source artifact.
 
 Goal: render a small useful subset end to end.
 
-- select renderer after a narrow spike
-- text, image, shape, and video layers
-- basic transforms and opacity animation
-- audio track
-- MP4 output
+### R1a — deterministic visual core ✅
+
+- FFmpeg renderer adapter
+- text layers
+- shape layers
+- multi-scene timeline offsets
+- project background
+- H.264 MP4 output
 - render diagnostics
+- command-generation tests
+
+### R1b — media and motion
+
+- image layers
+- video layers
+- audio layers
+- opacity and transform animation
+- asset probing and deterministic media validation
+- explicit scene transition model
+
+### R1c — renderer decision gate
+
+Use the R1 implementation experience to decide whether:
+
+1. FFmpeg remains the primary renderer,
+2. Remotion becomes a second/primary adapter,
+3. or a hybrid renderer is justified.
+
+Do not leak renderer-specific concepts into the canonical IR to make any one implementation easier.
 
 ## R2 — AI generation and bounded editing
 
@@ -57,7 +80,3 @@ Goal: learn from accumulated project edits and pairwise preferences.
 - reference pools
 - author/style profiles
 - optional fine-tuning/RL only when the corpus justifies it
-
-## Near-term decision gate
-
-Do not commit the canonical IR to Remotion, Three.js, FFmpeg, or any one model provider until R1 experiments show which concepts actually need to cross the renderer boundary.

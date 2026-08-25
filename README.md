@@ -20,16 +20,24 @@ Instead of collapsing a project into pixels, `video` keeps scenes, layers, timin
 6. **Preferences over magic scores** — candidate comparison is the primary learning signal.
 7. **Edits become data** — accepted revisions can later become preference/training examples.
 
-## Current milestone — R1a
+## Current milestone — R1b
 
-The first real renderer is now implemented with FFmpeg. It intentionally supports a narrow subset of the IR:
+The canonical IR now carries motion and transition semantics instead of hiding them in renderer-specific strings.
 
-- text layers
-- shape layers
+Implemented:
+
+- text and shape layers
 - multi-scene timing
-- project background color
+- first-class `Animation`
+- typed animation properties: opacity, x, y, scale, rotation
+- easing vocabulary: linear, ease-in, ease-out, ease-in-out
+- scene transitions: cut and fade
+- transition overlap in project duration
+- FFmpeg compilation for linear x/y animation on text and shapes
+- animation timing validation
+- project-relative validation of image/video/audio asset paths
 - H.264 MP4 output
-- explicit renderer failures and FFmpeg diagnostics
+- explicit renderer failures for IR features not yet supported by the FFmpeg adapter
 
 FFmpeg must be installed and available on `PATH`.
 
@@ -38,7 +46,27 @@ video validate examples/hello.json
 video render examples/hello.json -o build/hello.mp4
 ```
 
-The renderer boundary remains independent from FFmpeg: `VideoProject` does not contain FFmpeg-specific concepts and future renderers can be added behind the same contract.
+`examples/hello.json` is now a two-scene animated program. A fade transition currently defines timeline overlap; actual cross-fade rendering lands with media composition in R1b.1.
+
+The renderer boundary remains independent from FFmpeg: `VideoProject` contains no FFmpeg filters or command syntax, and future renderers can sit behind the same contract.
+
+## Next — R1b.1
+
+The next increment makes real media composable:
+
+```text
+ImageLayer + VideoLayer + AudioLayer
+              ↓
+      deterministic probing
+              ↓
+     trim / loop / fit rules
+              ↓
+   opacity / scale / rotation
+              ↓
+       real transitions
+```
+
+That representative project becomes the input to the R1c FFmpeg-vs-Remotion-vs-hybrid renderer decision.
 
 ## Development
 

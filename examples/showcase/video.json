@@ -1,0 +1,302 @@
+{
+  "schema_version": "0.3",
+  "title": "Video Showcase",
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30.0
+  },
+  "scenes": [
+    {
+      "id": "hook",
+      "duration": 4.0,
+      "layers": [
+        {
+          "id": "hook-accent",
+          "kind": "shape",
+          "start": 0.0,
+          "duration": 4.0,
+          "properties": {
+            "x": 190,
+            "y": 455,
+            "width": 900,
+            "height": 8,
+            "color": "0x3a86ff",
+            "opacity": 0.95
+          },
+          "animations": [
+            {
+              "property": "x",
+              "from_value": -900,
+              "to_value": 190,
+              "start": 0.0,
+              "duration": 0.9,
+              "easing": "ease_out"
+            }
+          ]
+        },
+        {
+          "id": "hook-title",
+          "kind": "text",
+          "start": 0.0,
+          "duration": 4.0,
+          "text": "The video is source code.",
+          "properties": {
+            "x": 640,
+            "y": 300,
+            "align": "center",
+            "font_size": 62,
+            "color": "white"
+          },
+          "animations": [
+            {
+              "property": "y",
+              "from_value": 390,
+              "to_value": 300,
+              "start": 0.0,
+              "duration": 0.8,
+              "easing": "ease_out"
+            }
+          ]
+        },
+        {
+          "id": "hook-music",
+          "kind": "audio",
+          "source": "assets/bed.wav",
+          "source_start": 0.0,
+          "start": 0.0,
+          "duration": 4.0,
+          "volume": 1.0
+        }
+      ],
+      "transition_out": {
+        "kind": "fade",
+        "duration": 0.6
+      },
+      "metadata": {
+        "background": "0x0b1020"
+      }
+    },
+    {
+      "id": "editable",
+      "duration": 4.5,
+      "layers": [
+        {
+          "id": "editable-card",
+          "kind": "image",
+          "source": "assets/card.png",
+          "start": 0.0,
+          "duration": 4.5,
+          "fit": "contain",
+          "properties": {
+            "x": 160,
+            "y": 90,
+            "width": 960,
+            "height": 540
+          },
+          "animations": [
+            {
+              "property": "scale",
+              "from_value": 0.82,
+              "to_value": 1.0,
+              "start": 0.0,
+              "duration": 1.4,
+              "easing": "ease_out"
+            },
+            {
+              "property": "rotation",
+              "from_value": -3.0,
+              "to_value": 0.0,
+              "start": 0.0,
+              "duration": 1.2,
+              "easing": "ease_in_out"
+            },
+            {
+              "property": "opacity",
+              "from_value": 0.0,
+              "to_value": 1.0,
+              "start": 0.0,
+              "duration": 0.8,
+              "easing": "ease_in"
+            }
+          ]
+        },
+        {
+          "id": "editable-title",
+          "kind": "text",
+          "start": 0.4,
+          "duration": 3.8,
+          "text": "Edit the program, not the pixels.",
+          "properties": {
+            "x": 640,
+            "y": 565,
+            "align": "center",
+            "font_size": 42,
+            "color": "white"
+          },
+          "animations": [
+            {
+              "property": "x",
+              "from_value": 880,
+              "to_value": 640,
+              "start": 0.0,
+              "duration": 0.9,
+              "easing": "ease_out"
+            }
+          ]
+        },
+        {
+          "id": "editable-music",
+          "kind": "audio",
+          "source": "assets/bed.wav",
+          "source_start": 3.4,
+          "start": 0.0,
+          "duration": 4.5,
+          "volume": 1.0
+        }
+      ],
+      "transition_out": {
+        "kind": "fade",
+        "duration": 0.6
+      },
+      "metadata": {
+        "background": "0x111827"
+      }
+    },
+    {
+      "id": "composition",
+      "duration": 5.0,
+      "layers": [
+        {
+          "id": "composition-video",
+          "kind": "video",
+          "source": "assets/motion.mp4",
+          "source_start": 0.4,
+          "start": 0.0,
+          "duration": 5.0,
+          "fit": "cover",
+          "properties": {
+            "x": 120,
+            "y": 70,
+            "width": 1040,
+            "height": 585
+          },
+          "animations": [
+            {
+              "property": "scale",
+              "from_value": 1.0,
+              "to_value": 1.08,
+              "start": 0.0,
+              "duration": 5.0,
+              "easing": "ease_in_out"
+            }
+          ]
+        },
+        {
+          "id": "composition-label",
+          "kind": "text",
+          "start": 0.5,
+          "duration": 4.0,
+          "text": "Text + media + motion + audio",
+          "properties": {
+            "x": 640,
+            "y": 595,
+            "align": "center",
+            "font_size": 40,
+            "color": "white"
+          },
+          "animations": [
+            {
+              "property": "y",
+              "from_value": 670,
+              "to_value": 595,
+              "start": 0.0,
+              "duration": 0.8,
+              "easing": "ease_out"
+            }
+          ]
+        },
+        {
+          "id": "composition-music",
+          "kind": "audio",
+          "source": "assets/bed.wav",
+          "source_start": 7.3,
+          "start": 0.0,
+          "duration": 5.0,
+          "volume": 1.0
+        }
+      ],
+      "transition_out": {
+        "kind": "fade",
+        "duration": 0.6
+      },
+      "metadata": {
+        "background": "0x09090b"
+      }
+    },
+    {
+      "id": "end-card",
+      "duration": 4.0,
+      "layers": [
+        {
+          "id": "end-title",
+          "kind": "text",
+          "start": 0.0,
+          "duration": 4.0,
+          "text": "One source. Many renders.",
+          "properties": {
+            "x": 640,
+            "y": 315,
+            "align": "center",
+            "font_size": 58,
+            "color": "white"
+          },
+          "animations": [
+            {
+              "property": "x",
+              "from_value": 360,
+              "to_value": 640,
+              "start": 0.0,
+              "duration": 1.0,
+              "easing": "ease_out"
+            }
+          ]
+        },
+        {
+          "id": "end-subtitle",
+          "kind": "text",
+          "start": 0.7,
+          "duration": 3.0,
+          "text": "video",
+          "properties": {
+            "x": 640,
+            "y": 405,
+            "align": "center",
+            "font_size": 34,
+            "color": "0x3a86ff"
+          }
+        },
+        {
+          "id": "end-music",
+          "kind": "audio",
+          "source": "assets/bed.wav",
+          "source_start": 11.7,
+          "start": 0.0,
+          "duration": 4.0,
+          "volume": 1.0
+        }
+      ],
+      "transition_out": {
+        "kind": "cut",
+        "duration": 0.0
+      },
+      "metadata": {
+        "background": "0x050816"
+      }
+    }
+  ],
+  "metadata": {
+    "background": "0x050816",
+    "purpose": "Representative R1 renderer decision-gate project"
+  }
+}

@@ -4,18 +4,20 @@ import os
 from pathlib import Path
 
 from .ffmpeg_renderer import FFmpegRenderer
-from .models import AnimationProperty, Layer
+from .models import AnimationProperty, Layer, VideoProject
 from .rendering import RenderError
 
 
 class PortableFFmpegRenderer(FFmpegRenderer):
-    """FFmpeg renderer with an explicit default font for drawtext.
+    """FFmpeg renderer with portable text and transition handling.
 
     Some Windows FFmpeg distributions ship Fontconfig support without a usable
     system Fontconfig configuration. Asking drawtext to choose an implicit font
-    can therefore fail before FFmpeg produces a useful diagnostic. The Video IR
-    stays renderer-neutral; this adapter resolves a real system font and passes
-    it to drawtext explicitly.
+    can therefore fail before FFmpeg produces a useful diagnostic. Windows
+    builds can also expose undefined frame-rate metadata after scene-local
+    filter chains; xfade rejects those streams. This adapter resolves a real
+    system font and normalizes every scene to the project FPS/timebase before
+    scene composition, without leaking those renderer concerns into the IR.
     """
 
     @classmethod
@@ -46,6 +48,30 @@ class PortableFFmpegRenderer(FFmpegRenderer):
         # FFmpeg filter syntax treats ':' specially. Forward slashes also avoid
         # backslash escaping problems on Windows.
         return path.as_posix().replace(":", "\\:").replace("'", "\\'")
+
+    def _compose_scenes(
+        self,
+        project: VideoProject,
+        scene_labels: list[str],
+        filters: list[str],
+    ) -> str:
+        """Normalize scene streams before concat/xfade composition.
+
+        FFmpeg's xfade requires both inputs to report a constant frame rate.
+        Some filter chains, notably on Windows FFmpeg 7.1 builds, can emerge
+        with an undefined 1/0 frame rate even when their source was generated
+        at a fixed rate. Applying fps plus a common AVTB timebase at the scene
+        boundary makes transition inputs deterministic across platforms.
+        """
+        normalized_labels: list[str] = []
+        fps = project.canvas.fps
+        for index, label in enumerate(scene_labels):
+            normalized = f"{label}_cfr"
+            filters.append(
+                f"[{label}]fps=fps={fps:g},settb=AVTB,setpts=PTS-STARTPTS[{normalized}]"
+            )
+            normalized_labels.append(normalized)
+        return super()._compose_scenes(project, normalized_labels, filters)
 
     def _text_filter(self, layer: Layer, start: float, end: float) -> str:
         props = layer.properties

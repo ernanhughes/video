@@ -4,12 +4,19 @@ import os
 from pathlib import Path
 
 from .ffmpeg_renderer import FFmpegRenderer
-from .models import AnimationProperty, Layer, TransitionKind, VideoProject
+from .models import (
+    AnimationProperty,
+    Layer,
+    LayerKind,
+    MediaFit,
+    TransitionKind,
+    VideoProject,
+)
 from .rendering import RenderError
 
 
 class PortableFFmpegRenderer(FFmpegRenderer):
-    """FFmpeg renderer with portable text and transition handling.
+    """FFmpeg renderer with portable text, opacity, and transitions.
 
     Some Windows FFmpeg distributions ship Fontconfig support without a usable
     system Fontconfig configuration. Asking drawtext to choose an implicit font
@@ -20,6 +27,10 @@ class PortableFFmpegRenderer(FFmpegRenderer):
     those streams before rendering. The portable renderer therefore implements
     scene fades as an explicit trimmed/blended overlap instead of depending on
     xfade's constant-frame-rate gate.
+
+    Animated alpha is evaluated with geq's per-frame T variable. The aa option
+    on colorchannelmixer is a scalar coefficient on current FFmpeg builds and
+    therefore cannot host the time-dependent expression emitted by the IR.
     """
 
     @classmethod
@@ -129,8 +140,8 @@ class PortableFFmpegRenderer(FFmpegRenderer):
                 # Clamp the blend progress to [0, 1] for deterministic edges.
                 progress = f"min(1,max(0,T/{duration:g}))"
                 filters.append(
-                    f"[{current_tail}][{next_head}]blend=all_expr='A*(1-({progress}))+B*({progress})':"
-                    f"shortest=1[{overlap}]"
+                    f"[{current_tail}][{next_head}]blend="
+                    f"all_expr='A*(1-({progress}))+B*({progress})':shortest=1[{overlap}]"
                 )
                 filters.append(
                     f"[{current_pre}][{overlap}][{next_post}]"
@@ -162,14 +173,75 @@ class PortableFFmpegRenderer(FFmpegRenderer):
         )
         return normalized
 
+    def _prepare_visual_media(
+        self,
+        layer: Layer,
+        input_index: int,
+        output_label: str,
+        local_start: float,
+        project: VideoProject,
+    ) -> str:
+        """Prepare visual media with per-frame portable alpha evaluation."""
+        width = int(layer.properties.get("width", project.canvas.width))
+        height = int(layer.properties.get("height", project.canvas.height))
+        if layer.fit == MediaFit.CONTAIN:
+            sizing = f"scale={width}:{height}:force_original_aspect_ratio=decrease"
+        elif layer.fit == MediaFit.COVER:
+            sizing = (
+                f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height}"
+            )
+        else:
+            sizing = f"scale={width}:{height}"
+
+        trim = f"trim=duration={layer.duration:g}"
+        if layer.kind == LayerKind.VIDEO and layer.source_start:
+            trim = f"trim=start={layer.source_start:g}:duration={layer.duration:g}"
+
+        operations = [trim, "setpts=PTS-STARTPTS", sizing, "format=rgba"]
+
+        scale_animation = self._animation(layer, AnimationProperty.SCALE)
+        if scale_animation:
+            expr = self._value_expression(scale_animation, 0.0, time_symbol="t")
+            operations.append(f"scale=w='iw*({expr})':h='ih*({expr})':eval=frame")
+
+        rotation_animation = self._animation(layer, AnimationProperty.ROTATION)
+        if rotation_animation:
+            expr = self._value_expression(rotation_animation, 0.0, time_symbol="t")
+            operations.append(f"rotate=angle='({expr})*PI/180':fillcolor=none")
+
+        opacity_animation = self._animation(layer, AnimationProperty.OPACITY)
+        if opacity_animation:
+            # geq evaluates T per frame. Preserve RGB channels and write the
+            # animation value into the alpha plane on a 0..255 scale.
+            expr = self._value_expression(opacity_animation, 0.0, time_symbol="T")
+            operations.append(
+                "geq="
+                "r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+                f"a='255*({expr})'"
+            )
+
+        operations.append(f"setpts=PTS+{local_start:g}/TB")
+        return f"[{input_index}:v]{','.join(operations)}[{output_label}]"
+
     def _text_filter(self, layer: Layer, start: float, end: float) -> str:
         props = layer.properties
         text = self._escape_filter_text(layer.text or "")
         fontsize = int(props.get("font_size", 64))
         color = str(props.get("color", "white"))
         align = str(props.get("align", "left"))
-        x_expr = self._position_expr(layer, AnimationProperty.X, props.get("x", "center"), start)
-        y_expr = self._position_expr(layer, AnimationProperty.Y, props.get("y", "center"), start)
+        x_expr = self._position_expr(
+            layer,
+            AnimationProperty.X,
+            props.get("x", "center"),
+            start,
+        )
+        y_expr = self._position_expr(
+            layer,
+            AnimationProperty.Y,
+            props.get("y", "center"),
+            start,
+        )
 
         if not self._has_animation(layer, AnimationProperty.X):
             if x_expr == "center":

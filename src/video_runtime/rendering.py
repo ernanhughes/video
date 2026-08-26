@@ -38,9 +38,9 @@ class UnknownRenderer(RenderError):
 
 def get_renderer(name: str = "ffmpeg") -> Renderer:
     if name == "ffmpeg":
-        from .ffmpeg_renderer import FFmpegRenderer
+        from .portable_ffmpeg_renderer import PortableFFmpegRenderer
 
-        return FFmpegRenderer()
+        return PortableFFmpegRenderer()
     if name == "remotion":
         from .remotion_renderer import RemotionRenderer
 

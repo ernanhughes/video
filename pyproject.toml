@@ -27,3 +27,6 @@ packages = ["src/video_runtime", "src/video_cli"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = "-p aitest.pytest_plugin"
+aitest_enabled = true
+aitest_policy = "observe"

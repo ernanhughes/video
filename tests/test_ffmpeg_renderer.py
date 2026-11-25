@@ -190,7 +190,8 @@ def test_media_transforms_compile_to_ffmpeg_filters() -> None:
     assert ":eval=frame" in graph
     assert "rotate=angle='(" in graph
     assert "*PI/180'" in graph
-    assert "colorchannelmixer=aa='" in graph
+    assert "geq=" in graph
+    assert "a='255*(" in graph
     assert "1-(1-(" in graph
     assert "*(3-2*(" in graph
 

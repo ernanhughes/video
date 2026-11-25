@@ -1,66 +1,22 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from .ffmpeg_renderer import FFmpegRenderer
-from .models import (
-    AnimationProperty,
-    Layer,
-    LayerKind,
-    MediaFit,
-    TransitionKind,
-    VideoProject,
-)
+from .models import TransitionKind, VideoProject
 from .rendering import RenderError
 
 
 class PortableFFmpegRenderer(FFmpegRenderer):
-    """FFmpeg renderer with portable text, opacity, and transitions.
+    """FFmpeg renderer with portable scene transitions.
 
-    Some Windows FFmpeg distributions ship Fontconfig support without a usable
-    system Fontconfig configuration. Asking drawtext to choose an implicit font
-    can therefore fail before FFmpeg produces a useful diagnostic.
-
-    FFmpeg 7.1 Windows builds can also expose undefined link-level frame-rate
+    FFmpeg 7.1 Windows builds can expose undefined link-level frame-rate
     metadata after otherwise fixed-rate filter chains. The xfade filter rejects
     those streams before rendering. The portable renderer therefore implements
     scene fades as an explicit trimmed/blended overlap instead of depending on
     xfade's constant-frame-rate gate.
 
-    Animated alpha is evaluated with geq's per-frame T variable. The aa option
-    on colorchannelmixer is a scalar coefficient on current FFmpeg builds and
-    therefore cannot host the time-dependent expression emitted by the IR.
+    Text fonts and animated alpha are handled by the base renderer with an
+    explicit font file and geq's per-frame T variable respectively.
     """
-
-    @classmethod
-    def _default_font_candidates(cls) -> tuple[Path, ...]:
-        windir = Path(os.environ.get("WINDIR", "C:/Windows"))
-        return (
-            windir / "Fonts" / "segoeui.ttf",
-            windir / "Fonts" / "arial.ttf",
-            windir / "Fonts" / "calibri.ttf",
-            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-            Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
-            Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
-            Path("/Library/Fonts/Arial.ttf"),
-        )
-
-    @classmethod
-    def _default_font(cls) -> Path:
-        for candidate in cls._default_font_candidates():
-            if candidate.is_file():
-                return candidate
-        raise RenderError(
-            "no usable default font was found for FFmpeg drawtext; "
-            "install Segoe UI/Arial, DejaVu Sans, or Liberation Sans"
-        )
-
-    @staticmethod
-    def _escape_font_path(path: Path) -> str:
-        # FFmpeg filter syntax treats ':' specially. Forward slashes also avoid
-        # backslash escaping problems on Windows.
-        return path.as_posix().replace(":", "\\:").replace("'", "\\'")
 
     def _compose_scenes(
         self,
@@ -172,96 +128,3 @@ class PortableFFmpegRenderer(FFmpegRenderer):
             f"setpts=PTS-STARTPTS[{normalized}]"
         )
         return normalized
-
-    def _prepare_visual_media(
-        self,
-        layer: Layer,
-        input_index: int,
-        output_label: str,
-        local_start: float,
-        project: VideoProject,
-    ) -> str:
-        """Prepare visual media with per-frame portable alpha evaluation."""
-        width = int(layer.properties.get("width", project.canvas.width))
-        height = int(layer.properties.get("height", project.canvas.height))
-        if layer.fit == MediaFit.CONTAIN:
-            sizing = f"scale={width}:{height}:force_original_aspect_ratio=decrease"
-        elif layer.fit == MediaFit.COVER:
-            sizing = (
-                f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-                f"crop={width}:{height}"
-            )
-        else:
-            sizing = f"scale={width}:{height}"
-
-        trim = f"trim=duration={layer.duration:g}"
-        if layer.kind == LayerKind.VIDEO and layer.source_start:
-            trim = f"trim=start={layer.source_start:g}:duration={layer.duration:g}"
-
-        operations = [trim, "setpts=PTS-STARTPTS", sizing, "format=rgba"]
-
-        scale_animation = self._animation(layer, AnimationProperty.SCALE)
-        if scale_animation:
-            expr = self._value_expression(scale_animation, 0.0, time_symbol="t")
-            operations.append(f"scale=w='iw*({expr})':h='ih*({expr})':eval=frame")
-
-        rotation_animation = self._animation(layer, AnimationProperty.ROTATION)
-        if rotation_animation:
-            expr = self._value_expression(rotation_animation, 0.0, time_symbol="t")
-            operations.append(f"rotate=angle='({expr})*PI/180':fillcolor=none")
-
-        opacity_animation = self._animation(layer, AnimationProperty.OPACITY)
-        if opacity_animation:
-            # geq evaluates T per frame. Preserve RGB channels and write the
-            # animation value into the alpha plane on a 0..255 scale.
-            expr = self._value_expression(opacity_animation, 0.0, time_symbol="T")
-            operations.append(
-                "geq="
-                "r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
-                f"a='255*({expr})'"
-            )
-
-        operations.append(f"setpts=PTS+{local_start:g}/TB")
-        return f"[{input_index}:v]{','.join(operations)}[{output_label}]"
-
-    def _text_filter(self, layer: Layer, start: float, end: float) -> str:
-        props = layer.properties
-        text = self._escape_filter_text(layer.text or "")
-        fontsize = int(props.get("font_size", 64))
-        color = str(props.get("color", "white"))
-        align = str(props.get("align", "left"))
-        x_expr = self._position_expr(
-            layer,
-            AnimationProperty.X,
-            props.get("x", "center"),
-            start,
-        )
-        y_expr = self._position_expr(
-            layer,
-            AnimationProperty.Y,
-            props.get("y", "center"),
-            start,
-        )
-
-        if not self._has_animation(layer, AnimationProperty.X):
-            if x_expr == "center":
-                x_expr = "(w-text_w)/2"
-            elif align == "center":
-                x_expr = f"{float(x_expr):g}-text_w/2"
-            elif align == "right":
-                x_expr = f"{float(x_expr):g}-text_w"
-        elif align == "center":
-            x_expr = f"({x_expr})-text_w/2"
-        elif align == "right":
-            x_expr = f"({x_expr})-text_w"
-
-        if not self._has_animation(layer, AnimationProperty.Y) and y_expr == "center":
-            y_expr = "(h-text_h)/2"
-
-        fontfile = self._escape_font_path(self._default_font())
-        return (
-            "drawtext="
-            f"fontfile='{fontfile}':text='{text}':x='{x_expr}':y='{y_expr}':"
-            f"fontsize={fontsize}:fontcolor={color}:"
-            f"enable='between(t,{start:g},{end:g})'"
-        )

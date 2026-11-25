@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -40,6 +41,35 @@ class FFmpegRenderer:
         AnimationProperty.SCALE,
         AnimationProperty.ROTATION,
     }
+
+    @classmethod
+    def _default_font_candidates(cls) -> tuple[Path, ...]:
+        windir = Path(os.environ.get("WINDIR", "C:/Windows"))
+        return (
+            windir / "Fonts" / "segoeui.ttf",
+            windir / "Fonts" / "arial.ttf",
+            windir / "Fonts" / "calibri.ttf",
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+            Path("/Library/Fonts/Arial.ttf"),
+        )
+
+    @classmethod
+    def _default_font(cls) -> Path:
+        for candidate in cls._default_font_candidates():
+            if candidate.is_file():
+                return candidate
+        raise RenderError(
+            "no usable default font was found for FFmpeg drawtext; "
+            "install Segoe UI/Arial, DejaVu Sans, or Liberation Sans"
+        )
+
+    @staticmethod
+    def _escape_font_path(path: Path) -> str:
+        # FFmpeg filter syntax treats ':' specially. Forward slashes also avoid
+        # backslash escaping problems on Windows.
+        return path.as_posix().replace(":", "\\:").replace("'", "\\'")
 
     def render(
         self,
@@ -113,12 +143,15 @@ class FFmpegRenderer:
                 if layer.kind not in {LayerKind.IMAGE, LayerKind.VIDEO, LayerKind.AUDIO}:
                     continue
                 resolved = self._resolve_source(layer, source_root)
+                # Forward slashes are accepted by FFmpeg on every platform and
+                # keep command graphs stable across Windows and POSIX hosts.
+                resolved_arg = resolved.as_posix()
                 if layer.kind == LayerKind.IMAGE:
-                    command.extend(["-loop", "1", "-i", str(resolved)])
+                    command.extend(["-loop", "1", "-i", resolved_arg])
                 elif layer.loop:
-                    command.extend(["-stream_loop", "-1", "-i", str(resolved)])
+                    command.extend(["-stream_loop", "-1", "-i", resolved_arg])
                 else:
-                    command.extend(["-i", str(resolved)])
+                    command.extend(["-i", resolved_arg])
                 media_inputs[layer.id] = next_input
                 next_input += 1
 
@@ -347,8 +380,15 @@ class FFmpegRenderer:
 
         opacity_animation = self._animation(layer, AnimationProperty.OPACITY)
         if opacity_animation:
-            expr = self._value_expression(opacity_animation, 0.0, time_symbol="t")
-            operations.append(f"colorchannelmixer=aa='{expr}'")
+            # colorchannelmixer evaluates "aa" once at init and rejects the
+            # time variable. geq evaluates T per frame, so write the animated
+            # alpha there while preserving the RGB planes.
+            expr = self._value_expression(opacity_animation, 0.0, time_symbol="T")
+            operations.append(
+                "geq="
+                "r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+                f"a='255*({expr})'"
+            )
 
         operations.append(f"setpts=PTS+{local_start:g}/TB")
         return f"[{input_index}:v]{','.join(operations)}[{output_label}]"
@@ -376,9 +416,10 @@ class FFmpegRenderer:
         if not self._has_animation(layer, AnimationProperty.Y) and y_expr == "center":
             y_expr = "(h-text_h)/2"
 
+        fontfile = self._escape_font_path(self._default_font())
         return (
             "drawtext="
-            f"text='{text}':x='{x_expr}':y='{y_expr}':"
+            f"fontfile='{fontfile}':text='{text}':x='{x_expr}':y='{y_expr}':"
             f"fontsize={fontsize}:fontcolor={color}:enable='between(t,{start:g},{end:g})'"
         )
 

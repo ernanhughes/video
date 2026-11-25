@@ -1,3 +1,5 @@
+.aitest/
+
 # Logs
 logs
 *.log
